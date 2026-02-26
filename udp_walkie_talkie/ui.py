@@ -1,17 +1,15 @@
 import tkinter as tk
 from tkinter import font as tkfont
 import threading
-import struct
 import time
 from socket import socket, AF_INET, SOCK_DGRAM
 
-from jitter_buffer import JitterBuffer, parse_packet, create_packet, CHUNK, SILENCE
+from jitter_buffer import JitterBuffer, parse_packet, create_packet, SILENCE, SAMPLES_PER_FRAME
 from metrics import NetworkMetrics
 
 # Audio constants from PRD
 RATE = 8000
 CHANNELS = 1
-FORMAT_SIZE = 2  # 16-bit = 2 bytes per sample
 FRAME_DURATION_MS = 20
 
 # Try to import pyaudio - may not be installed yet
@@ -20,13 +18,6 @@ try:
     PYAUDIO_AVAILABLE = True
 except ImportError:
     PYAUDIO_AVAILABLE = False
-
-# Try to import numpy
-try:
-    import numpy as np
-    NUMPY_AVAILABLE = True
-except ImportError:
-    NUMPY_AVAILABLE = False
 
 
 class WalkieTalkieApp:
@@ -278,14 +269,14 @@ class WalkieTalkieApp:
                     channels=CHANNELS,
                     rate=RATE,
                     input=True,
-                    frames_per_buffer=CHUNK // FORMAT_SIZE
+                    frames_per_buffer=SAMPLES_PER_FRAME
                 )
                 self.output_stream = self.audio.open(
                     format=pyaudio.paInt16,
                     channels=CHANNELS,
                     rate=RATE,
                     output=True,
-                    frames_per_buffer=CHUNK // FORMAT_SIZE
+                    frames_per_buffer=SAMPLES_PER_FRAME
                 )
 
             self.is_connected = True
@@ -393,7 +384,7 @@ class WalkieTalkieApp:
             try:
                 if self.input_stream and PYAUDIO_AVAILABLE:
                     audio_data = self.input_stream.read(
-                        CHUNK // FORMAT_SIZE, exception_on_overflow=False
+                        SAMPLES_PER_FRAME, exception_on_overflow=False
                     )
                 else:
                     # No PyAudio: send silence (for testing UI without audio)

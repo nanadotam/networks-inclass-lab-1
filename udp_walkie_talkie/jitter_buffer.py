@@ -4,7 +4,10 @@ import time
 
 
 # Audio constants matching PRD spec
-CHUNK = 160          # 160 bytes per frame (80 samples × 2 bytes)
+# 20ms @ 8kHz = 160 samples, each 2 bytes (16-bit PCM) = 320 bytes per frame
+SAMPLES_PER_FRAME = 160
+BYTES_PER_SAMPLE = 2
+CHUNK = SAMPLES_PER_FRAME * BYTES_PER_SAMPLE  # 320 bytes per frame
 SILENCE = b'\x00' * CHUNK  # Silence frame for lost packets
 
 

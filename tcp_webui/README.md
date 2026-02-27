@@ -8,11 +8,11 @@ You have **3 components** that can be mixed and matched:
 
 This is a raw TCP socket server. It:
 
-1. **Binds** to all network interfaces (`HOST = ''`) on **port 8080**
-2. **Listens** for incoming TCP connections (`server_socket.listen(50)` — up to 50 queued)
-3. For **each client** that connects, it spawns a new **thread** (`handle_client`) so multiple people can chat simultaneously
-4. **Broadcasts** messages — when one client sends a message, the server forwards it to every *other* connected client
-5. Assigns each client a username based on their IP/port (e.g. `User_10_255_163_145_54321`)
+1. [ ] **Binds** to all network interfaces (`HOST = ''`) on **port 8080**
+2. [ ] **Listens** for incoming TCP connections (`server_socket.listen(50)` — up to 50 queued)
+3. [ ] For **each client** that connects, it spawns a new **thread** (`handle_client`) so multiple people can chat simultaneously
+4. [ ] **Broadcasts** messages — when one client sends a message, the server forwards it to every *other* connected client
+5. [ ] Assigns each client a username based on their IP/port (e.g. `User_10_255_163_145_54321`)
 
 **Data flow:**
 
@@ -24,10 +24,13 @@ Client A sends "hello" → Server receives → Server forwards to Client B, C, D
 
 A simple command-line client that:
 
-1. Opens a TCP socket and **connects** to a server IP + port
-2. Runs a **background thread** to continuously listen for incoming messages
-3. The **main thread** reads your keyboard input and sends it to the server
-4. Supports command-line args: `python TCPClient.py <host> <port>`
+Opens a TCP socket and **connects** to a server IP + port
+
+* [ ] Runs a **background thread** to continuously listen for incoming messages
+
+The **main thread** reads your keyboard input and sends it to the server
+
+Supports command-line args: `python TCPClient.py <host> <port>`
 
 ### 3. `app.py` — Web UI (Flask + WebSocket Bridge)
 
@@ -102,8 +105,8 @@ python app.py
 
 ## Quick Reference
 
-| File | What it does | Default port | Command |
-|------|-------------|-------------|---------|
-| `TCPServer.py` | Chat server | 8080 | `python TCPServer.py` |
-| `TCPClient.py` | Terminal client | connects to 5050 | `python TCPClient.py <host> <port>` |
-| `app.py` | Web UI bridge | 8080 (web), connects to 5050 (TCP) | `python app.py` |
+| File             | What it does    | Default port                       | Command                               |
+| ---------------- | --------------- | ---------------------------------- | ------------------------------------- |
+| `TCPServer.py` | Chat server     | 8080                               | `python TCPServer.py`               |
+| `TCPClient.py` | Terminal client | connects to 5050                   | `python TCPClient.py <host> <port>` |
+| `app.py`       | Web UI bridge   | 8080 (web), connects to 5050 (TCP) | `python app.py`                     |

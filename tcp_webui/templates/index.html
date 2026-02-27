@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TCP Chat</title>
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <!-- Material Icons -->
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
+  <!-- Socket.IO -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    :root {
+      --primary: #1976d2;
+      --primary-dark: #1565c0;
+      --surface: #ffffff;
+      --bg: #f0f2f5;
+      --text: #1a1a2e;
+      --text-secondary: #65676b;
+      --border: #e4e6eb;
+      --self-bubble: #1976d2;
+      --self-text: #ffffff;
+      --remote-bubble: #e4e6eb;
+      --remote-text: #1a1a2e;
+      --system-text: #65676b;
+      --success: #2e7d32;
+      --error: #c62828;
+      --shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08);
+      --shadow-lg: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ---- Header ---- */
+    .header {
+      background: var(--surface);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: var(--shadow);
+      z-index: 10;
+    }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .header h1 { font-size: 18px; font-weight: 600; }
+    .status-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--error);
+      transition: background 0.3s;
+    }
+    .status-dot.connected { background: var(--success); }
+    .status-label { font-size: 13px; color: var(--text-secondary); }
+
+    /* ---- Connection bar ---- */
+    .connect-bar {
+      background: var(--surface);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .connect-bar input {
+      font-family: inherit;
+      font-size: 14px;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      outline: none;
+      transition: border 0.2s;
+    }
+    .connect-bar input:focus { border-color: var(--primary); }
+    .connect-bar input.host { width: 160px; }
+    .connect-bar input.port { width: 80px; }
+
+    .btn {
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 8px 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-danger { background: var(--error); color: #fff; }
+    .btn-danger:hover { background: #b71c1c; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ---- Chat area ---- */
+    .chat-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .msg {
+      max-width: 70%;
+      padding: 10px 14px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.45;
+      word-wrap: break-word;
+      animation: fadeIn 0.2s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .msg.self {
+      align-self: flex-end;
+      background: var(--self-bubble);
+      color: var(--self-text);
+      border-bottom-right-radius: 4px;
+    }
+    .msg.remote {
+      align-self: flex-start;
+      background: var(--remote-bubble);
+      color: var(--remote-text);
+      border-bottom-left-radius: 4px;
+    }
+    .msg.system {
+      align-self: center;
+      background: transparent;
+      color: var(--system-text);
+      font-size: 12px;
+      font-style: italic;
+      padding: 4px 0;
+    }
+
+    .msg-time {
+      font-size: 11px;
+      opacity: 0.6;
+      margin-top: 4px;
+    }
+    .msg.self .msg-time { text-align: right; }
+
+    /* ---- Input bar ---- */
+    .input-bar {
+      background: var(--surface);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-top: 1px solid var(--border);
+    }
+    .input-bar input {
+      flex: 1;
+      font-family: inherit;
+      font-size: 14px;
+      padding: 10px 16px;
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      outline: none;
+      transition: border 0.2s;
+    }
+    .input-bar input:focus { border-color: var(--primary); }
+    .send-btn {
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .send-btn:hover { background: var(--primary-dark); }
+    .send-btn:active { transform: scale(0.93); }
+    .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ---- Log panel ---- */
+    .log-toggle {
+      position: fixed; bottom: 80px; right: 20px;
+      width: 44px; height: 44px; border-radius: 50%;
+      background: var(--surface); border: 1px solid var(--border);
+      box-shadow: var(--shadow-lg);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      z-index: 20;
+    }
+    .log-panel {
+      position: fixed; bottom: 0; right: 0;
+      width: 400px; max-height: 50vh;
+      background: #1e1e2e; color: #cdd6f4;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      overflow-y: auto;
+      padding: 12px;
+      border-top-left-radius: 12px;
+      box-shadow: var(--shadow-lg);
+      z-index: 20;
+      display: none;
+    }
+    .log-panel.open { display: block; }
+    .log-entry { padding: 2px 0; white-space: pre-wrap; }
+    .log-entry.info { color: #89b4fa; }
+    .log-entry.error { color: #f38ba8; }
+    .log-entry.success { color: #a6e3a1; }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <span class="material-icons" style="color:var(--primary)">chat</span>
+      <h1>TCP Chat</h1>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div class="status-dot" id="statusDot"></div>
+      <span class="status-label" id="statusLabel">Disconnected</span>
+    </div>
+  </div>
+
+  <!-- Connection bar -->
+  <div class="connect-bar">
+    <input class="host" id="hostInput" type="text" placeholder="Host" value="localhost" />
+    <input class="port" id="portInput" type="text" placeholder="Port" value="5050" />
+    <button class="btn btn-primary" id="connectBtn" onclick="doConnect()">
+      <span class="material-icons" style="font-size:18px">power</span> Connect
+    </button>
+    <button class="btn btn-danger" id="disconnectBtn" onclick="doDisconnect()" style="display:none">
+      <span class="material-icons" style="font-size:18px">power_off</span> Disconnect
+    </button>
+  </div>
+
+  <!-- Chat messages -->
+  <div class="chat-container" id="chatContainer"></div>
+
+  <!-- Message input -->
+  <div class="input-bar">
+    <input type="text" id="msgInput" placeholder="Type a message…" disabled
+           onkeydown="if(event.key==='Enter')sendMsg()" />
+    <button class="send-btn" id="sendBtn" onclick="sendMsg()" disabled>
+      <span class="material-icons">send</span>
+    </button>
+  </div>
+
+  <!-- Network log toggle -->
+  <div class="log-toggle" onclick="toggleLog()" title="Network Log">
+    <span class="material-icons" style="color:var(--text-secondary)">terminal</span>
+  </div>
+
+  <!-- Network log panel -->
+  <div class="log-panel" id="logPanel"></div>
+
+  <script>
+    const socket = io();
+
+    const chatContainer = document.getElementById('chatContainer');
+    const msgInput      = document.getElementById('msgInput');
+    const sendBtn       = document.getElementById('sendBtn');
+    const connectBtn    = document.getElementById('connectBtn');
+    const disconnectBtn = document.getElementById('disconnectBtn');
+    const hostInput     = document.getElementById('hostInput');
+    const portInput     = document.getElementById('portInput');
+    const statusDot     = document.getElementById('statusDot');
+    const statusLabel   = document.getElementById('statusLabel');
+    const logPanel      = document.getElementById('logPanel');
+
+    let connected = false;
+
+    /* ---- Helpers ---- */
+    function timeNow() {
+      return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function addMessage(type, text) {
+      const div = document.createElement('div');
+      div.className = `msg ${type}`;
+      const content = document.createElement('div');
+      content.textContent = text;
+      div.appendChild(content);
+
+      if (type !== 'system') {
+        const time = document.createElement('div');
+        time.className = 'msg-time';
+        time.textContent = timeNow();
+        div.appendChild(time);
+      }
+
+      chatContainer.appendChild(div);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function log(text, cls = 'info') {
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${cls}`;
+      entry.textContent = `[${timeNow()}] ${text}`;
+      logPanel.appendChild(entry);
+      logPanel.scrollTop = logPanel.scrollHeight;
+    }
+
+    function setConnected(val) {
+      connected = val;
+      statusDot.classList.toggle('connected', val);
+      statusLabel.textContent = val ? 'Connected' : 'Disconnected';
+      connectBtn.style.display    = val ? 'none' : 'flex';
+      disconnectBtn.style.display = val ? 'flex' : 'none';
+      hostInput.disabled = val;
+      portInput.disabled = val;
+      msgInput.disabled  = !val;
+      sendBtn.disabled   = !val;
+      if (val) msgInput.focus();
+    }
+
+    function toggleLog() {
+      logPanel.classList.toggle('open');
+    }
+
+    /* ---- Actions ---- */
+    function doConnect() {
+      const host = hostInput.value.trim() || 'localhost';
+      const port = parseInt(portInput.value.trim()) || 5050;
+      log(`Connecting to TCP server ${host}:${port}…`);
+      addMessage('system', `Connecting to ${host}:${port}…`);
+      socket.emit('tcp_connect', { host, port });
+    }
+
+    function doDisconnect() {
+      log('Disconnecting from TCP server…');
+      socket.emit('tcp_disconnect');
+    }
+
+    function sendMsg() {
+      const text = msgInput.value.trim();
+      if (!text || !connected) return;
+      socket.emit('send_message', { text });
+      msgInput.value = '';
+      msgInput.focus();
+      log(`TX → ${text}`);
+    }
+
+    /* ---- Socket events ---- */
+    socket.on('tcp_status', (data) => {
+      if (data.connected) {
+        setConnected(true);
+        log(`Connected to ${data.host}:${data.port}`, 'success');
+        addMessage('system', `Connected to ${data.host}:${data.port}`);
+      } else {
+        setConnected(false);
+        if (data.error) {
+          log(`Connection failed: ${data.error}`, 'error');
+          addMessage('system', `Connection failed: ${data.error}`);
+        } else {
+          log('Disconnected', 'info');
+          addMessage('system', 'Disconnected');
+        }
+      }
+    });
+
+    socket.on('chat_message', (data) => {
+      addMessage(data.type, data.text);
+      log(`RX ← ${data.text}`, data.type === 'system' ? 'info' : 'success');
+    });
+
+    socket.on('connect', () => {
+      log('WebSocket connected to Flask server', 'success');
+    });
+
+    socket.on('disconnect', () => {
+      setConnected(false);
+      log('WebSocket disconnected', 'error');
+    });
+  </script>
+</body>
+</html>

@@ -92,9 +92,11 @@ def start_server():
     print(f"[Server] Listening on port {PORT}...")
     print("[Server] Waiting for connections. Press Ctrl+C to stop.\n")
 
-    # Run server input in a separate thread so it doesn't block accepting clients
-    input_thread = threading.Thread(target=server_input, daemon=True)
-    input_thread.start()
+    # Only start input thread if stdin is a terminal (not backgrounded)
+    import sys
+    if sys.stdin.isatty():
+        input_thread = threading.Thread(target=server_input, daemon=True)
+        input_thread.start()
 
     try:
         while True:

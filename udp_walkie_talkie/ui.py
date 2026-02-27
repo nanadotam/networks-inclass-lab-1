@@ -2,15 +2,20 @@ import tkinter as tk
 from tkinter import font as tkfont
 import threading
 import time
+import struct
 from socket import socket, AF_INET, SOCK_DGRAM
 
-from jitter_buffer import JitterBuffer, parse_packet, create_packet, SILENCE, SAMPLES_PER_FRAME
+from jitter_buffer import JitterBuffer, parse_packet, create_packet, SILENCE, SAMPLES_PER_FRAME, CHUNK
 from metrics import NetworkMetrics
 
 # Audio constants from PRD
 RATE = 8000
 CHANNELS = 1
 FRAME_DURATION_MS = 20
+
+# Jitter buffer capacity - WiFi needs more headroom than wired LAN
+# 5 packets = 100ms buffer, good for typical WiFi jitter
+DEFAULT_JB_CAPACITY = 5
 
 # Try to import pyaudio - may not be installed yet
 try:
@@ -40,7 +45,7 @@ class WalkieTalkieApp:
         # State
         self.is_connected = False
         self.is_transmitting = False
-        self.is_receiving = False
+        self.last_recv_time = 0  # Timestamp of last received packet
         self.running = False
 
         # Network components
@@ -51,7 +56,7 @@ class WalkieTalkieApp:
         self.sequence_number = 0
 
         # Core modules
-        self.jitter_buffer = JitterBuffer(capacity=3)
+        self.jitter_buffer = JitterBuffer(capacity=DEFAULT_JB_CAPACITY)
         self.metrics = NetworkMetrics()
 
         # Audio
@@ -296,6 +301,13 @@ class WalkieTalkieApp:
             )
             self.playback_thread.start()
 
+            # Send a ping packet so the peer knows we're here
+            # (a tiny packet that the receiver will ignore as too small for audio)
+            try:
+                self.sock.sendto(b"PING", (self.peer_ip, self.peer_port))
+            except OSError:
+                pass
+
             # Update UI state
             self.connect_btn.config(text="Disconnect", bg="#27ae60")
             self.ptt_btn.config(state=tk.NORMAL, fg="#eaeaea")
@@ -303,6 +315,7 @@ class WalkieTalkieApp:
             self.port_entry.config(state=tk.DISABLED)
             self.local_port_entry.config(state=tk.DISABLED)
             self._set_status("idle")
+            print(f"[CONNECTED] Listening on :{self.local_port}, sending to {self.peer_ip}:{self.peer_port}")
 
         except OSError as e:
             self.status_label.config(
@@ -398,29 +411,39 @@ class WalkieTalkieApp:
                 self.sequence_number += 1
                 self.metrics.record_sent(len(audio_data))
 
-            except OSError:
+            except OSError as e:
+                print(f"[SEND ERROR] {e}")
                 break
-            except Exception:
+            except Exception as e:
+                print(f"[CAPTURE ERROR] {e}")
                 break
 
     def _receive_loop(self):
         """Listen for incoming UDP packets and add to jitter buffer."""
+        first_packet = True
         while self.running:
             try:
-                data, addr = self.sock.recvfrom(1024)
-                if len(data) < 8:
+                data, addr = self.sock.recvfrom(65535)
+
+                # Skip non-audio packets (ping, etc)
+                if len(data) < 9:
+                    print(f"[RECV] Got control packet from {addr}: {data[:20]}")
+                    self.last_recv_time = time.time()
                     continue
 
                 seq, timestamp, audio_data = parse_packet(data)
                 self.jitter_buffer.add((seq, timestamp, audio_data))
                 self.metrics.record_received(seq, timestamp, len(audio_data))
 
-                # Update receiving indicator
-                if not self.is_transmitting:
-                    self.is_receiving = True
+                # Log first packet so user knows connection is working
+                if first_packet:
+                    print(f"[RECV] First audio packet from {addr} | seq={seq} | audio={len(audio_data)} bytes")
+                    first_packet = False
+
+                # Mark receive time for LED (stable, not flickery)
+                self.last_recv_time = time.time()
 
             except TimeoutError:
-                self.is_receiving = False
                 continue
             except OSError:
                 break
@@ -432,13 +455,18 @@ class WalkieTalkieApp:
             if audio_data is not None:
                 if self.output_stream and PYAUDIO_AVAILABLE:
                     try:
-                        self.output_stream.write(audio_data)
-                    except Exception:
-                        pass
-                if not self.is_transmitting:
-                    self.is_receiving = True
+                        # Pad or trim audio to match expected frame size
+                        # (handles peers sending different chunk sizes)
+                        if len(audio_data) < CHUNK:
+                            audio_data = audio_data + b'\x00' * (CHUNK - len(audio_data))
+                        elif len(audio_data) > CHUNK:
+                            audio_data = audio_data[:CHUNK]
+
+                        num_frames = len(audio_data) // (CHANNELS * 2)
+                        self.output_stream.write(audio_data, num_frames=num_frames)
+                    except Exception as e:
+                        print(f"[PLAYBACK ERROR] {e}")
             else:
-                self.is_receiving = False
                 time.sleep(FRAME_DURATION_MS / 1000.0)
 
     # ── PTT Event Handlers ──
@@ -506,11 +534,12 @@ class WalkieTalkieApp:
             oneliner = self.metrics.format_debug_line(buf_occ, buf_cap)
             self.debug_oneliner.config(text=oneliner)
 
-            # Update receiving status LED
-            if self.is_receiving and not self.is_transmitting:
-                self._set_status("receiving")
-            elif self.is_transmitting:
+            # Update status LED - "receiving" if got a packet in last 500ms
+            recently_receiving = (time.time() - self.last_recv_time) < 0.5
+            if self.is_transmitting:
                 self._set_status("transmitting")
+            elif recently_receiving:
+                self._set_status("receiving")
             else:
                 self._set_status("idle")
 
